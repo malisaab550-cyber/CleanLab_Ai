@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CleanLab AI — Large Dataset Cleaner</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>.user-email{margin-left:12px;font-size:12px}.logout-form{display:inline-block;margin-left:8px}.logout-btn{padding:7px 10px!important}
+#encodedPreviewTable { width: 100%; border-collapse: collapse; margin-top: 12px; }
+#encodedPreviewTable th, #encodedPreviewTable td { border: 1px solid #d8dee8; padding: 8px 10px; text-align: left; white-space: nowrap; }
+#encodedPreviewTable th { background: #eef3fb; }
+#encodedPreviewTable tbody tr:nth-child(even) { background: #f8fafc; }
+</style>
+</head>
+<body>
+<header class="top"><div class="brand">CleanLab <span>AI</span></div><div class="tag">Chunk-based • Mobile-friendly <span class="user-email">{{ user_email }}</span> <form class="logout-form" method="post" action="{{ url_for('logout') }}"><button class="secondary logout-btn" type="submit">Sign out</button></form></div></header>
+<main class="wrap">
+  <section class="hero">
+    <p class="eyebrow">DATA QUALITY WORKSPACE</p>
+    <h1>Clean large datasets, safely.</h1>
+    <p class="sub">CSV files up to the configured {{ max_upload_gb }} GB limit; Excel (.xlsx) is also supported. CSV files are processed in chunks.</p>
+  </section>
+  <section class="panel">
+    <h2>1. PostgreSQL and reference data</h2>
+    <p class="muted" id="dbStatus">Checking PostgreSQL status…</p>
+    <p class="muted">Download a reference CSV from a public/open-data portal, then import it into PostgreSQL using this form. The app does not guess values from arbitrary websites; you choose the source.</p>
+    <form id="referenceForm">
+      <label>Public/reference CSV<input type="file" id="referenceFile" accept=".csv,text/csv" required></label>
+      <label>PostgreSQL table name<input id="referenceTable" placeholder="e.g. weather_reference" required></label>
+      <label>Key column name in the CSV<input id="referenceKey" placeholder="e.g. station_id" required></label>
+      <button class="secondary" id="importBtn" type="submit">Import reference CSV to PostgreSQL</button>
+    </form>
+    <div id="importStatus" class="status"></div>
+  </section>
+  <section class="panel">
+    <h2>2. Upload CSV or Excel</h2>
+    <p class="muted">Both CSV (.csv) and Excel (.xlsx) are supported. CSV is recommended for very large files because Excel conversion may require more memory.</p>
+    <form id="uploadForm">
+      <label class="filepick"> <span>Choose dataset (.csv, .xlsx)</span><input type="file" id="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required></label>
+      <button class="primary" id="uploadBtn" type="submit">Upload & inspect</button>
+    </form>
+    <div id="uploadStatus" class="status"></div>
+  </section>
+  <section class="panel hidden" id="settings">
+    <h2>3. Cleaning options</h2>
+    <div class="checks">
+      <label><input type="checkbox" id="fillMissing" checked> Fill missing values</label>
+      <label><input type="checkbox" id="dedupe" checked> Remove duplicate rows</label>
+      <label><input type="checkbox" id="convertNumeric" checked> Convert numeric-looking columns</label>
+      <label><input type="checkbox" id="dbLookup"> Fill missing cells from reference database</label>
+    </div>
+    <div id="dbOptions" class="dbbox hidden">
+      <p class="muted">For database matching, select the source table and the same ID/key column in both datasets. Database values are used only for matching IDs.</p>
+      <label>Database table<select id="dbTable"><option value="">Select table</option>{% for table in tables %}<option value="{{ table }}">{{ table }}</option>{% endfor %}</select></label>
+      <label>Database key column<input id="dbKey" placeholder="e.g. customer_id"></label>
+      <label>Uploaded CSV key column<select id="datasetKey"><option value="">Select key column</option></select></label>
+    </div>
+    <div id="preview" class="preview"></div>
+    <button class="primary" id="cleanBtn">Clean dataset</button>
+    <div id="cleanStatus" class="status"></div>
+    <div class="progress hidden" id="progress"><div id="bar"></div></div>
+  </section>
+  <section class="panel hidden" id="results">
+    <h2>4. Cleaning report</h2>
+    <div id="stats" class="stats"></div>
+    <h3>AI suggestions</h3><ul id="suggestions"></ul>
+    <h3>Missing values before cleaning</h3><div id="missing"></div>
+    <a class="primary download" id="download" href="#">Download cleaned CSV</a>
+    <p class="muted">The result downloads to your browser. Validate values before using them for business, medical, or financial decisions.</p>
+  </section>
+
+  <section class="panel hidden" id="encodingPanel">
+    <h2>5. AI-assisted Encoding</h2>
+    <p class="muted">Encode categorical columns for machine learning. AI suggestions use column metadata and sample statistics. The Auto button applies suggested methods to selected columns and creates an encoded file. Always validate the result.</p>
+    <div id="encodingSuggestions" class="status">Loading encoding suggestions…</div>
+    <label>Encoding method
+      <select id="encodingMethod"><option value="onehot">One-Hot Encoding (nominal categories)</option><option value="label">Label Encoding (category to integer)</option></select>
+    </label>
+    <p class="muted">One-Hot creates a separate 0/1 column for each category (maximum 50 categories per selected column). Label Encoding does not make the numeric order meaningful by itself.</p>
+    <div id="encodingColumns" class="checks"></div>
+    <button class="primary" id="autoEncodeBtn" type="button">Apply AI suggestions and encode</button>
+    <button class="primary" id="encodeBtn" type="button">Encode with selected method</button>
+    <div id="encodingStatus" class="status"></div>
+    <a class="primary download hidden" id="encodedDownload" href="#">Download encoded CSV</a>
+  </section>
+
+  <section class="panel" id="encodedPreviewSection">
+    <h2>Encoded Dataset Preview</h2>
+    <p id="previewStatus" class="status">Encode a dataset to see its preview here.</p>
+    <div style="overflow-x:auto;">
+      <table id="encodedPreviewTable">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+  <footer>Privacy: do not upload confidential datasets to a public server. Use persistent storage, quotas, a background job queue, and secure file deletion for production.</footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
